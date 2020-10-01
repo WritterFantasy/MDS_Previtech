@@ -1,20 +1,17 @@
 /**
  * Universidad de la Salle Bajío
  * BE. Francisco Rafael Flores de Maria y Campos
+ * BE. Luis Manuel Rico Chávez
  * Electronic and Telecommunications Engineering
- * Practice 6: Analog Signals Display.
+ * Monitoring and Diagnosis System for Industrial Machines
  * __________
  *           |
  *   		 |=> LCD
  *           |
- *      ACH4 |<- J12[2] (Potenciometer)
- *      ACH5 |<- J12[4] (Potenciometer)
- *      ACH6 |<- J12[5] (Potenciometer)
- *    ACH0 <-| TempSensor
  * __________|
- * Displays a selected function with selectid cycles in a graph as well as
- * the readings of the 3 ADC external Channels plus the internal temperature
- * sensor at the same time.
+ * This is the interface for the system that will communicate the sensors with
+ * the DB developed through a LabView Application. This will show the measurements
+ * in real time as well as the graphics for a selected time.
  */
 #include <stdio.h>
 #include <string.h>
@@ -33,6 +30,8 @@
 #include "fsl_adc.h"
 #include "fsl_clock.h"
 #include "fsl_power.h"
+#include "fsl_usart.h"
+#include "fsl_ctimer.h"
 /* TODO: insert other definitions and declarations here. */
 /*** General LCD Configuration ***/
 /* SDRAM Config */
@@ -86,6 +85,20 @@ void DisplayTitle(void);
  * ADC Handler
  ******************************************************************************/
 
+/*******************************************************************************
+ * CTIMER Handler
+ ******************************************************************************/
+/*Definitions for ctimer handler*/
+#define CTIMER CTIMER3
+#define CTIMER_CLK_FREQ CLOCK_GetFreq(kCLOCK_AsyncApbClk)
+#define CTIMER_MAT0_OUT kCTIMER_Match_0
+/*Variables for ctimer handler*/
+static ctimer_match_config_t matchConfig0; //config variable for the matching value
+unsigned int cont = 0; //aux counter for interrupt
+void ctimer_match0_callback(uint32_t flags); //callback function
+ctimer_callback_t ctimer_callback_table[] = {ctimer_match0_callback, NULL, NULL, NULL, NULL, NULL, NULL, NULL}; //array of callback functions
+void init_timer(); //ctimer initialization
+
 int main(void) {
 
     CLOCK_AttachClk(BOARD_DEBUG_UART_CLK_ATTACH);
@@ -99,6 +112,7 @@ int main(void) {
     BOARD_InitDebugConsole();
     BOARD_InitSDRAM();
 
+    init_timer();
     InitWindow();
     WM_Exec();
 
@@ -144,7 +158,8 @@ static void cbBackgroundWin(WM_MESSAGE *pMsg)
             WM_DefaultProc(pMsg);
     }
 }
-
+/* Inicialización de la ventada de inicio de la HMI
+ * */
 void InitWindow(void)
 {
 	InitPWM();
@@ -156,4 +171,42 @@ void InitWindow(void)
     WM_SetCallback(WM_HBKWIN, cbBackgroundWin);
     GUI_SetBkColor(GUI_BLUE_98);
     GUI_Clear();
+}
+
+/*******************************************************************************
+ * CTIMER Handler
+ ******************************************************************************/
+void init_timer()
+{
+
+    ctimer_config_t config;
+    /* Enable the asynchronous bridge */
+    SYSCON->ASYNCAPBCTRL = 1;
+    /*Attaches 12MHZ clock to CTIMER source*/
+    CLOCK_AttachClk(kFRO12M_to_ASYNC_APB);
+    /*CTIMER configuration*/
+    CTIMER_GetDefaultConfig(&config);
+    CTIMER_Init(CTIMER, &config);
+    /* Configuration for channel 0 */
+    matchConfig0.enableCounterReset = true;
+    matchConfig0.enableCounterStop  = false;
+    matchConfig0.matchValue         = CTIMER_CLK_FREQ;
+    matchConfig0.outControl         = kCTIMER_Output_NoAction;
+    matchConfig0.outPinInitState    = false;
+    matchConfig0.enableInterrupt    = true;
+    /*Callback registers*/
+    CTIMER_RegisterCallBack(CTIMER, &ctimer_callback_table[0], kCTIMER_MultipleCallback);
+    CTIMER_SetupMatch(CTIMER, CTIMER_MAT0_OUT, &matchConfig0);
+    CTIMER_StartTimer(CTIMER);
+	PRINTF("\r\nContador inicializado");
+}
+/* Función de callback para timer.
+ * El sistema genera una interrupción cada segundo
+ * entrando en la función de callback
+ * */
+void ctimer_match0_callback(uint32_t flags)
+{
+/*#TODO poner la llamada por software de los canales de ADC*/
+	cont++;
+	PRINTF("\r\nHAN PASADO %d segundos",cont);
 }
